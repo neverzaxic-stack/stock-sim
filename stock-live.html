@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>美股练习（真实行情）</title>
+<style>
+:root{--bg:#EEF1EC;--card:#fff;--ink:#12302B;--mut:#66756F;--line:#D9DFD8;--up:#C8342B;--down:#1F8A5B;--btn:#12302B;--btnt:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1815;--card:#16251F;--ink:#E6EFEA;--mut:#8FA39B;--line:#27382F;--up:#FF6B5E;--down:#3FCB8C;--btn:#E6EFEA;--btnt:#0E1815;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0E1815;--card:#16251F;--ink:#E6EFEA;--mut:#8FA39B;--line:#27382F;--up:#FF6B5E;--down:#3FCB8C;--btn:#E6EFEA;--btnt:#0E1815;color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Avenir Next","PingFang SC","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+main{max-width:900px;margin:0 auto;padding:20px 16px 40px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}
+h1{font-size:22px;margin:0;letter-spacing:.02em}
+h2{font-size:15px;margin:0 0 8px;color:var(--mut);font-weight:600}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);padding:8px 12px;min-height:44px}
+button:focus-visible,input:focus-visible,.row:focus-visible{outline:3px solid var(--down);outline-offset:2px}
+.sum{display:grid;grid-template-columns:2fr 1fr 1fr;gap:16px;padding-bottom:20px;border-bottom:2px solid var(--ink);margin-bottom:20px}
+.sum small{display:block;color:var(--mut);font-size:13px}
+.big{font-size:34px;font-weight:700;line-height:1.15}
+.mid{font-size:20px;font-weight:600}
+.up{color:var(--up)}.down{color:var(--down)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:28px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid var(--line);cursor:pointer;min-height:56px}
+.row[aria-pressed="true"]{background:var(--card);border-left:4px solid var(--ink);padding-left:6px}
+.row b{font-size:17px}.row span.n{color:var(--mut);font-size:13px;margin-left:8px}
+.row div:last-child{text-align:right}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.price{font-size:32px;font-weight:700}
+svg{width:100%;height:80px;display:block;margin:10px 0}
+.trade{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.trade input{flex:1 1 100px;min-width:0;font:inherit;padding:8px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);min-height:44px}
+.buy{background:var(--up);color:#fff;border-color:var(--up)}
+.sell{background:var(--down);color:#fff;border-color:var(--down)}
+#msg{min-height:24px;margin:10px 0 0;font-size:14px}
+.err{color:var(--up)}
+.wrap{overflow-x:auto;margin-top:24px}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:420px}
+th,td{text-align:right;padding:8px 6px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mut);font-weight:600}
+.log{font-size:13px;color:var(--mut);margin:8px 0 0;padding:0;list-style:none}
+.log li{padding:3px 0}
+.hint{color:var(--mut);font-size:13px;margin-top:24px}
+@media(max-width:520px){.sum{grid-template-columns:1fr 1fr}.sum>div:first-child{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>美股练习</h1><button id="reset" type="button">重新开始</button></header>
+<p id="stat" class="hint" style="margin:-8px 0 16px">正在取行情…</p>
+<section class="sum" id="sum" aria-live="polite"></section>
+<div class="cols">
+  <section><h2>股票列表（点一下选择）</h2><div id="list"></div></section>
+  <section class="panel">
+    <div id="quote"></div>
+    <div class="trade">
+      <input id="qty" type="number" min="1" step="1" value="10" inputmode="numeric" aria-label="股数">
+      <button class="buy" id="buy" type="button">买入</button>
+      <button class="sell" id="sell" type="button">卖出</button>
+    </div>
+    <p id="msg" role="status"></p>
+    <ul class="log" id="log"></ul>
+  </section>
+</div>
+<div class="wrap"><h2>我的持仓</h2><div id="hold"></div></div>
+<p class="hint">价格来自 Finnhub，每 20 秒更新一次；美股休市时价格不会动。红涨绿跌。用的是虚拟资金，记录会保留在这个浏览器里。</p>
+</main>
+<script>
+const BASE={AAPL:['苹果',230],MSFT:['微软',420],NVDA:['英伟达',140],TSLA:['特斯拉',340],AMZN:['亚马逊',200],GOOGL:['谷歌',175],META:['Meta',580]};
+const START=100000,K='sim-stock-v2';
+let S={cash:START,pos:{},log:[],px:{},hist:{}},sel='AAPL';
+try{const d=JSON.parse(localStorage.getItem(K));if(d&&d.px)S=d}catch(e){}
+for(const t in BASE){if(!S.px[t]){S.px[t]=BASE[t][1]}if(!S.hist[t]){S.hist[t]=[S.px[t]]}}
+const $=id=>document.getElementById(id);
+const f=n=>n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const cls=n=>n>0?'up':n<0?'down':'';
+const sg=n=>(n>0?'+':n<0?'−':'')+f(Math.abs(n));
+const pc=n=>(n>0?'+':n<0?'−':'')+Math.abs(n*100).toFixed(2)+'%';
+function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
+function total(){let v=S.cash;for(const t in S.pos)v+=S.pos[t].q*S.px[t];return v}
+function msg(s,bad){const m=$('msg');m.textContent=s;m.className=bad?'err':''}
+function render(){
+  const tot=total(),pl=tot-START;
+  $('sum').innerHTML=`<div><small>总资产（美元）</small><div class="big">$${f(tot)}</div></div><div><small>现金</small><div class="mid">$${f(S.cash)}</div></div><div><small>总盈亏</small><div class="mid ${cls(pl)}">${sg(pl)}</div></div>`;
+  $('list').innerHTML=Object.keys(BASE).map(t=>{const p=S.px[t],ch=p/(PC[t]||BASE[t][1])-1;return `<div class="row" role="button" tabindex="0" data-t="${t}" aria-pressed="${t===sel}"><div><b>${t}</b><span class="n">${BASE[t][0]}</span></div><div>$${f(p)}<br><small class="${cls(ch)}">${pc(ch)}</small></div></div>`}).join('');
+  const h=S.hist[sel],p=S.px[sel],lo=Math.min(...h),hi=Math.max(...h),r=hi-lo||1;
+  const pts=h.map((v,i)=>`${(i/Math.max(h.length-1,1))*300},${74-((v-lo)/r)*68}`).join(' ');
+  const ch=p/(PC[sel]||BASE[sel][1])-1,own=S.pos[sel];
+  $('quote').innerHTML=`<h2>${sel} ${BASE[sel][0]}</h2><div class="price">$${f(p)}</div><small class="${cls(ch)}">较昨日收盘 ${pc(ch)}</small><svg viewBox="0 0 300 80" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="var(--${ch>=0?'up':'down'})" stroke-width="2" vector-effect="non-scaling-stroke"/></svg><small>你持有：${own?own.q+' 股，平均成本 $'+f(own.cost):'0 股'}</small>`;
+  const ks=Object.keys(S.pos);
+  $('hold').innerHTML=ks.length?`<table><tr><th>代码</th><th>股数</th><th>成本</th><th>现价</th><th>盈亏</th></tr>${ks.map(t=>{const o=S.pos[t],g=(S.px[t]-o.cost)*o.q;return `<tr><td>${t}</td><td>${o.q}</td><td>$${f(o.cost)}</td><td>$${f(S.px[t])}</td><td class="${cls(g)}">${sg(g)}</td></tr>`}).join('')}</table>`:'<p class="hint" style="margin:0">还没有持仓。选一只股票，输入股数，点“买入”试试。</p>';
+  $('log').innerHTML=S.log.slice(0,5).map(s=>`<li>${s}</li>`).join('');
+}
+function trade(side){
+  const q=parseInt($('qty').value,10),p=S.px[sel];
+  if(!live[sel]){return msg('还没有拿到 '+sel+' 的真实价格，请稍等几秒',1)}
+  if(!(q>0)){return msg('请输入大于 0 的整数股数',1)}
+  if(side==='buy'){
+    const c=q*p;
+    if(c>S.cash){return msg(`现金不够：需要 $${f(c)}，现在只有 $${f(S.cash)}`,1)}
+    const o=S.pos[sel]||{q:0,cost:0};
+    o.cost=(o.cost*o.q+c)/(o.q+q);o.q+=q;S.pos[sel]=o;S.cash-=c;
+    S.log.unshift(`买入 ${sel} ${q} 股，价格 $${f(p)}`);msg(`已买入 ${q} 股 ${sel}`);
+  }else{
+    const o=S.pos[sel];
+    if(!o||o.q<q){return msg(`你只有 ${o?o.q:0} 股 ${sel}，卖不了 ${q} 股`,1)}
+    S.cash+=q*p;o.q-=q;if(o.q===0){delete S.pos[sel]}
+    S.log.unshift(`卖出 ${sel} ${q} 股，价格 $${f(p)}`);msg(`已卖出 ${q} 股 ${sel}`);
+  }
+  save();render();
+}
+const KEY='dbqa4tpr01qn88eepgeg',PC={},live={};
+function stat(t,bad){const e=$('stat');e.textContent=t;e.style.color=bad?'var(--up)':''}
+async function load(){
+  let ok=0,code=0;
+  await Promise.all(Object.keys(BASE).map(async t=>{
+    try{
+      const r=await fetch('https://finnhub.io/api/v1/quote?symbol='+t+'&token='+KEY);
+      if(!r.ok){code=r.status;return}
+      const d=await r.json();
+      if(d&&d.c>0){S.px[t]=d.c;PC[t]=d.pc||d.c;live[t]=1;S.hist[t].push(d.c);if(S.hist[t].length>60){S.hist[t].shift()}ok++}
+    }catch(e){code=code||-1}
+  }));
+  if(ok){stat('真实行情，更新于 '+new Date().toLocaleTimeString('zh-CN'))}
+  else{stat(code===401||code===403?'密钥不被接受（错误 '+code+'），请把这行字告诉 Claude':code===429?'请求太频繁，稍后会自动重试':'取不到行情（错误 '+code+'），现在显示的是示例价格，不能交易',1)}
+  save();render();
+}
+$('list').addEventListener('click',e=>{const r=e.target.closest('[data-t]');if(r){sel=r.dataset.t;msg('');render()}});
+$('list').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){const r=e.target.closest('[data-t]');if(r){e.preventDefault();sel=r.dataset.t;render()}}});
+$('buy').onclick=()=>trade('buy');
+$('sell').onclick=()=>trade('sell');
+let armed=0;
+$('reset').onclick=function(){
+  if(!armed){armed=1;this.textContent='再点一次确认';setTimeout(()=>{armed=0;this.textContent='重新开始'},3000);return}
+  armed=0;this.textContent='重新开始';
+  S={cash:START,pos:{},log:[],px:S.px,hist:S.hist};
+  save();msg('已重置，重新拿到 $100,000');render();
+};
+render();load();setInterval(load,20000);
+</script>
+</body>
+</html>
